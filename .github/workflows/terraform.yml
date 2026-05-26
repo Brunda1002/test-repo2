@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "Which stage to run"
+        description: "Which stage to run (stage1 or stage2)"
         required: true
         default: "stage2"
         type: choice
@@ -27,13 +27,12 @@ env:
 
 jobs:
 
-  # ── Stage 1: Azure resources (subnet, ALB identity, ALB resource) ─────────
-  # Runs automatically on push to main
-  # Can also be re-run manually: workflow_dispatch → stage: stage1
   azure_infra:
     name: "Stage 1 — Azure Infra"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || inputs.stage == 'stage1'
+    if: >
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.stage == 'stage1')
 
     steps:
       - uses: actions/checkout@v4
@@ -60,13 +59,11 @@ jobs:
       - name: Terraform Apply — Azure infra
         run: terraform apply -auto-approve -input=false tfplan-infra
 
-  # ── Stage 2: Helm + App (ALB controller, nginx, gateway, httproute) ───────
-  # Run manually AFTER setup.sh completes:
-  #   GitHub Actions → Run workflow → stage: stage2
   app_deploy:
     name: "Stage 2 — Helm + App"
     runs-on: ubuntu-latest
-    if: inputs.stage == 'stage2'
+    if: >
+      github.event_name == 'workflow_dispatch' && github.event.inputs.stage == 'stage2'
 
     steps:
       - uses: actions/checkout@v4
