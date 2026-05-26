@@ -1,0 +1,92 @@
+name: Grouper ALB POC — Terraform
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+jobs:
+
+  # ── Stage 1: Create Azure resources ──────────────────────────────────────
+  azure_infra:
+    name: "Stage 1 — Azure Infra"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan — Azure infra only
+        run: |
+          terraform plan \
+            -var-file="terraform.tfvars" \
+            -target=azurerm_subnet.alb \
+            -target=azurerm_user_assigned_identity.alb \
+            -target=azurerm_federated_identity_credential.alb \
+            -target=azapi_resource.alb \
+            -target=azapi_resource.alb_association \
+            -out=tfplan-infra \
+            -input=false
+
+      - name: Terraform Apply — Azure infra only
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: terraform apply -auto-approve -input=false tfplan-infra
+
+  # ── setup.sh runs here (manually in Cloud Shell after Stage 1) ───────────
+  #    bash setup.sh
+  #    Assigns Reader + Network Contributor roles to ALB identity
+  #    Waits 5 min for RBAC to propagate
+  #    Then trigger Stage 2 manually via workflow_dispatch
+
+  # ── Stage 2: Deploy Helm + App ────────────────────────────────────────────
+  app_deploy:
+    name: "Stage 2 — Helm + App"
+    runs-on: ubuntu-latest
+    needs: azure_infra
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan — Helm + App
+        run: |
+          terraform plan \
+            -var-file="terraform.tfvars" \
+            -target=helm_release.alb_controller \
+            -target=kubernetes_namespace.app \
+            -target=kubernetes_deployment.nginx \
+            -target=kubernetes_service.nginx \
+            -target=kubernetes_manifest.gateway \
+            -target=kubernetes_manifest.httproute \
+            -out=tfplan-app \
+            -input=false
+
+      - name: Terraform Apply — Helm + App
+        run: terraform apply -auto-approve -input=false tfplan-app
