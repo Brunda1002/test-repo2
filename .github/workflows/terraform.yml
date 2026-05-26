@@ -4,10 +4,16 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      stage:
+        description: "Which stage to run"
+        required: true
+        default: "stage2"
+        type: choice
+        options:
+          - stage1
+          - stage2
 
 permissions:
   contents: read
@@ -21,10 +27,13 @@ env:
 
 jobs:
 
-  # ── Stage 1: Create Azure resources ──────────────────────────────────────
+  # ── Stage 1: Azure resources (subnet, ALB identity, ALB resource) ─────────
+  # Runs automatically on push to main
+  # Can also be re-run manually: workflow_dispatch → stage: stage1
   azure_infra:
     name: "Stage 1 — Azure Infra"
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.stage == 'stage1'
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +45,7 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Plan — Azure infra only
+      - name: Terraform Plan — Azure infra
         run: |
           terraform plan \
             -var-file="terraform.tfvars" \
@@ -48,22 +57,16 @@ jobs:
             -out=tfplan-infra \
             -input=false
 
-      - name: Terraform Apply — Azure infra only
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      - name: Terraform Apply — Azure infra
         run: terraform apply -auto-approve -input=false tfplan-infra
 
-  # ── setup.sh runs here (manually in Cloud Shell after Stage 1) ───────────
-  #    bash setup.sh
-  #    Assigns Reader + Network Contributor roles to ALB identity
-  #    Waits 5 min for RBAC to propagate
-  #    Then trigger Stage 2 manually via workflow_dispatch
-
-  # ── Stage 2: Deploy Helm + App ────────────────────────────────────────────
+  # ── Stage 2: Helm + App (ALB controller, nginx, gateway, httproute) ───────
+  # Run manually AFTER setup.sh completes:
+  #   GitHub Actions → Run workflow → stage: stage2
   app_deploy:
     name: "Stage 2 — Helm + App"
     runs-on: ubuntu-latest
-    needs: azure_infra
-    if: github.event_name == 'workflow_dispatch'
+    if: inputs.stage == 'stage2'
 
     steps:
       - uses: actions/checkout@v4
