@@ -1,7 +1,0 @@
-subscription_id     = "91ea5a42-5e9b-4c0c-a766-ea2a2aaa3ace"
-resource_group_name = "rg-grouper-poc"
-aks_cluster_name    = "aks-grouper-poc"
-vnet_name           = "vnet-grouper-poc"
-name_prefix         = "grouper-poc"
-alb_subnet_cidr     = "10.10.3.0/24"
-app_namespace       = "demo"

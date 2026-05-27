@@ -1,4 +1,0 @@
-subscription_id     = "YOUR-SUBSCRIPTION-ID"
-resource_group_name = "rg-grouper-alb-poc"
-name_prefix         = "grouper-poc"
-location            = "eastus"
